@@ -26,6 +26,9 @@ def set_config(c):
     c.activation_extraction = False
     c.deterministic_algorithm = False
     c.separate_model_saving = False
+    c.save_error_bounded_deltas = False
+    c.convert_to_blocks = False
+
 
 
 # def set_config(c):

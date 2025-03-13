@@ -280,6 +280,7 @@ def process(
     test_size,
     apply_normalization,
     convert_to_blocks,
+    is_nested,
     verbose,
 ):
     """Loads the input data into a ndarray, splits it into train/test splits and normalizes if chosen.
@@ -293,17 +294,22 @@ def process(
     Returns: ndarray, ndarray, ndarray: Array with the train set, array with the test set and array with the
     normalization features.
     """
-    loaded = np.load(input_path)
+    loaded = np.load(input_path, allow_pickle=True)
     data = loaded["data"]
 
     if verbose:
         print("Original Dataset Shape - ", data.shape)
-
+    
+    
     original_shape = data.shape
 
     if convert_to_blocks:
         data = data_processing.convert_to_blocks_util(convert_to_blocks, data)
 
+    """MY CODE FOR ATLAS DATA WHICH CONTAIN NESTED ARRAYS"""
+    if is_nested:
+        data = data_processing.reshape_dataset(data)
+        print("Flattened Dataset Shape - ", data.shape)
     normalization_features = data_processing.find_minmax(data)
     if apply_normalization:
         print("Normalizing the data...")
@@ -488,8 +494,15 @@ def compress(model_path, config):
     """
 
     # Loads the data and applies normalization if config.apply_normalization = True
-    loaded = np.load(config.input_path)
-    data_before = loaded["data"]
+    if config.is_nested:
+        loaded = np.load(config.input_path, allow_pickle=True)
+        data = loaded["data"]
+        original_shape = data.shape
+        data_before = data_processing.reshape_dataset(data)
+        print("Flattened Dataset Shape - ", data.shape)
+    else:    
+        loaded = np.load(config.input_path)
+        data_before = loaded["data"]
     original_shape = data_before.shape
 
     if hasattr(config, "convert_to_blocks") and config.convert_to_blocks:
@@ -615,6 +628,9 @@ def compress(model_path, config):
 
     return (compressed, error_bound_batch, error_bound_deltas, error_bound_index)
 
+"""MYCODE"""
+
+
 
 def decompress(
     model_path,
@@ -668,10 +684,13 @@ def decompress(
     latent_space_size = len(data[0])
     bs = config.batch_size
     model_dict = torch.load(str(model_path), map_location=get_device())
-    if config.data_dimension == 2 and config.model_type == "dense":
-        number_of_columns = int((len(model_dict[list(model_dict.keys())[-1]])))
+    
+    # Use config.number_of_columns directly
+    if hasattr(config, 'number_of_columns'):
+        number_of_columns = config.number_of_columns
     else:
-        number_of_columns = len(model_dict[list(model_dict.keys())[-1]])
+        # Fallback if not set (e.g., infer from data or model)
+        number_of_columns = len(data[0]) if config.data_dimension == 1 else original_shape[-1]
 
     # Initialise and load the model correctly.
     device = get_device()

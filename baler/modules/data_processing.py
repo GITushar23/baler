@@ -44,6 +44,7 @@ def save_model(model, model_path: str) -> None:
     Returns:
         None: Saved model state dictionary as `.pt` file.
     """
+    print("Saving model to: ", model_path)
     torch.save(model.state_dict(), model_path)
 
 
@@ -100,6 +101,9 @@ def load_model(model_object, model_path: str, n_features: int, z_dim: int):
     dictionary loaded into it.
     """
     device = helper.get_device()
+    print("Loading model from: ", model_path)
+    print("n_features: ", n_features)
+    print("z_dim: ", z_dim)
     model = model_object(n_features, z_dim)
     model.to(device)
 
@@ -110,25 +114,102 @@ def load_model(model_object, model_path: str, n_features: int, z_dim: int):
     return model
 
 
+# def find_minmax(data):
+#     """Obtains the minimum and maximum values for each column.
+
+#     Args:
+#         data (ndarray): Any dataset as a `ndarray` which one eventually wants to normalize using the Min-Max method.
+
+#     Returns: ndarray: An array of two lists. One of the lists contains the minimum of each column, while the other
+#     list contains `feature_range = max - min` for each column.
+#     """
+#     data = list(data)
+#     true_max_list = np.apply_along_axis(np.max, axis=0, arr=data)
+#     true_min_list = np.apply_along_axis(np.min, axis=0, arr=data)
+
+#     # Computes the range
+#     feature_range_list = true_max_list - true_min_list
+
+#     normalization_features = np.array([true_min_list, feature_range_list])
+#     return normalization_features
+"""MYCODE"""
+def find_global_max_len(data):
+    """Find the maximum length of any array across all samples and features."""
+    max_len = 0
+    for sample in data:
+        for feature in sample:
+            max_len = max(max_len, len(feature))
+    return max_len
+
+def pad_arrays(data, max_len):
+    """Pad all arrays in the dataset to the maximum length with zeros."""
+    padded_data = []
+    for sample in data:
+        padded_sample = []
+        for feature in sample:
+            padded_feature = np.pad(feature, (0, max_len - len(feature)), 
+                                  'constant', constant_values=0)
+            padded_sample.append(padded_feature)
+        padded_data.append(padded_sample)
+    return padded_data
+
+def compute_min_max(data, feature_indices):
+    """Compute min and max for specified features using original (unpadded) values."""
+    min_values = {}
+    max_values = {}
+    for idx in feature_indices:
+        # Collect all values for this feature across all samples
+        all_values = [val for sample in data for val in sample[idx]]
+        min_values[idx] = np.min(all_values)
+        max_values[idx] = np.max(all_values)
+    return min_values, max_values
+
 def find_minmax(data):
-    """Obtains the minimum and maximum values for each column.
-
-    Args:
-        data (ndarray): Any dataset as a `ndarray` which one eventually wants to normalize using the Min-Max method.
-
-    Returns: ndarray: An array of two lists. One of the lists contains the minimum of each column, while the other
-    list contains `feature_range = max - min` for each column.
-    """
-    data = list(data)
-    true_max_list = np.apply_along_axis(np.max, axis=0, arr=data)
-    true_min_list = np.apply_along_axis(np.min, axis=0, arr=data)
-
-    # Computes the range
-    feature_range_list = true_max_list - true_min_list
-
-    normalization_features = np.array([true_min_list, feature_range_list])
-    return normalization_features
-
+    """Normalize the dataset after padding all arrays to the global maximum length."""
+    # Step 1: Find the global maximum length
+    max_len = find_global_max_len(data)
+    print(f"Global maximum length found: {max_len}")
+    
+    # Step 2: Pad all arrays to max_len
+    padded_data = pad_arrays(data, max_len)
+    
+    # Convert to a 3D NumPy array: (n_samples, 6, max_len)
+    padded_array = np.stack([np.stack(sample) for sample in padded_data], axis=0)
+    
+    # Step 3: Define numerical features to normalize (exclude boolean feature at index 4)
+    numerical_features = [0, 1, 2, 3, 5]
+    
+    # Compute min and max for numerical features using original data
+    min_values, max_values = compute_min_max(data, numerical_features)
+    
+    # Initialize the normalized array
+    normalized_data = np.zeros_like(padded_array, dtype=np.float32)
+    
+    # Step 4: Normalize numerical features
+    for idx in numerical_features:
+        min_val = min_values[idx]
+        max_val = max_values[idx]
+        # Avoid division by zero
+        range_val = max_val - min_val if max_val > min_val else 1
+        normalized_data[:, idx, :] = (padded_array[:, idx, :] - min_val) / range_val
+    
+    # Copy the boolean feature (index 4) as is
+    normalized_data[:, 4, :] = padded_array[:, 4, :].astype(np.float32)
+    
+    return normalized_data
+def reshape_dataset(data):
+    """Reshape the dataset by padding all arrays to the global maximum length without normalization."""
+    # Step 1: Find the global maximum length
+    max_len = find_global_max_len(data)
+    print(f"Global maximum length found: {max_len}")
+    
+    # Step 2: Pad all arrays to max_len
+    padded_data = pad_arrays(data, max_len)
+    
+    # Step 3: Convert to a 3D NumPy array: (n_samples, n_features, max_len)
+    reshaped_data = np.stack([np.stack(sample) for sample in padded_data], axis=0)
+    
+    return reshaped_data
 
 def normalize(data, custom_norm: bool):
     """This function scales the data to be in the range [0,1], based on the Min Max normalization method. It finds
@@ -151,7 +232,7 @@ def normalize(data, custom_norm: bool):
         data = [((i - true_min) / feature_range) for i in data]
         data = np.array(data)
     return data
-
+"""UPTO HERE"""
 
 def split(data, test_size: float, random_state: int) -> Tuple[ndarray, ndarray]:
     """Splits the given data according to a test size into two sets, train and test. This is a sklearn function,

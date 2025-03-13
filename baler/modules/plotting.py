@@ -19,6 +19,7 @@ import numpy as np
 from matplotlib.backends.backend_pdf import PdfPages
 from tqdm import tqdm
 from tqdm import trange
+from .data_processing import reshape_dataset
 
 
 def loss_plot(path_to_loss_data, output_path, config):
@@ -380,7 +381,13 @@ def plot_2D(project_path, config):
         config (dataclass): The config class containing attributes set in the config file
     """
 
-    data = np.load(config.input_path)["data"]
+    if config.is_nested:
+        data = np.load(config.input_path,allow_pickle=True)["data"]
+        data = reshape_dataset(data)
+        print("Used nested data")
+        print(f"Data shape: {data.shape}")
+    else:
+        data = np.load(config.input_path)["data"]
     data_decompressed = np.load(project_path + "/decompressed_output/decompressed.npz")[
         "data"
     ]
@@ -410,7 +417,9 @@ def plot_2D(project_path, config):
         # elif config.model_type == "dense":
         #     tile_data_decompressed = data_decompressed[ind][0]
         tile_data = data[ind]
-        tile_data_decompressed = data_decompressed[ind]
+        tile_data_decompressed = data_decompressed[ind].squeeze()
+        print(tile_data.shape)
+        print(tile_data_decompressed.shape)
 
         diff = tile_data - tile_data_decompressed
 

@@ -337,6 +337,7 @@ def train(model, variables, train_data, test_data, project_path, config):
         np.save(os.path.join(project_path, "activations.npy"), activations)
 
     print(f"{(end - start) / 60:.3} minutes")
+    os.makedirs(project_path, exist_ok=True)    
     np.save(
         os.path.join(project_path, "loss_data.npy"), np.array([train_loss, val_loss])
     )

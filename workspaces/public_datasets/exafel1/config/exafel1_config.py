@@ -12,6 +12,7 @@ def set_config(c):
     # c.model_name = "Conv_AE_GDN"
     # c.model_type = "convolutional"
     c.model_name = "CFD_dense_AE"
+    # c.model_name = "AE_Dropout_BN"
     c.model_type = "dense"
     c.custom_norm = True
     c.l1 = True

@@ -81,6 +81,7 @@ class GDN(nn.Module):
         self.gamma = nn.Parameter(gamma)
 
     def forward(self, inputs):
+        inputs = inputs.to(self.device)
         unfold = False
         if inputs.dim() == 5:
             unfold = True
@@ -259,19 +260,19 @@ class AE_Dropout_BN(nn.Module):
 
         # encoder
         self.enc_nn = nn.Sequential(
-            nn.Linear(n_features, 200, dtype=torch.float64),
+            nn.Linear(n_features, 200, dtype=torch.float32),
             nn.Dropout(p=0.5),
             nn.LeakyReLU(),
             # nn.BatchNorm1d(200,dtype=torch.float64),
-            nn.Linear(200, 100, dtype=torch.float64),
+            nn.Linear(200, 100, dtype=torch.float32),
             nn.Dropout(p=0.4),
             nn.LeakyReLU(),
             # nn.BatchNorm1d(100,dtype=torch.float64),
-            nn.Linear(100, 50, dtype=torch.float64),
+            nn.Linear(100, 50, dtype=torch.float32),
             nn.Dropout(p=0.3),
             nn.LeakyReLU(),
             # nn.BatchNorm1d(50,dtype=torch.float64),
-            nn.Linear(50, z_dim, dtype=torch.float64),
+            nn.Linear(50, z_dim, dtype=torch.float32),
             nn.Dropout(p=0.2),
             nn.LeakyReLU(),
             # nn.BatchNorm1d(z_dim,dtype=torch.float64)
@@ -279,21 +280,21 @@ class AE_Dropout_BN(nn.Module):
 
         # decoder
         self.dec_nn = nn.Sequential(
-            nn.Linear(z_dim, 50, dtype=torch.float64),
+            nn.Linear(z_dim, 50, dtype=torch.float32),
             # nn.Dropout(p=0.2),
             nn.LeakyReLU(),
-            nn.BatchNorm1d(50, dtype=torch.float64),
-            nn.Linear(50, 100, dtype=torch.float64),
+            nn.BatchNorm1d(50, dtype=torch.float32),
+            nn.Linear(50, 100, dtype=torch.float32),
             # nn.Dropout(p=0.3),
             nn.LeakyReLU(),
-            nn.BatchNorm1d(100, dtype=torch.float64),
-            nn.Linear(100, 200, dtype=torch.float64),
+            nn.BatchNorm1d(100, dtype=torch.float32),
+            nn.Linear(100, 200, dtype=torch.float32),
             # nn.Dropout(p=0.4),
             nn.LeakyReLU(),
-            nn.BatchNorm1d(200, dtype=torch.float64),
-            nn.Linear(200, n_features, dtype=torch.float64),
+            nn.BatchNorm1d(200, dtype=torch.float32),
+            nn.Linear(200, n_features, dtype=torch.float32),
             # nn.Dropout(p=0.5),
-            nn.BatchNorm1d(n_features, dtype=torch.float64),
+            nn.BatchNorm1d(n_features, dtype=torch.float32),
             nn.ReLU(),
         )
 
@@ -301,10 +302,13 @@ class AE_Dropout_BN(nn.Module):
         self.z_dim = z_dim
 
     def encode(self, x):
+        # print("----"*100)
+        # print(x.shape)
         out = self.enc_nn(x)
         return out
 
     def decode(self, z):
+        # print(z.dtype)
         out = self.dec_nn(z)
         return out
 
@@ -317,48 +321,50 @@ class Conv_AE(nn.Module):
     def __init__(self, n_features, z_dim, *args, **kwargs):
         super(Conv_AE, self).__init__(*args, **kwargs)
 
+        self.z_dim = z_dim
         self.q_z_mid_dim = 2000
-        self.q_z_output_dim = 128
-        self.conv_op_shape = None
-
-        # Encoder
-
-        # Conv Layers
+        
+        # Encoder convolutional layers (unchanged)
         self.q_z_conv = nn.Sequential(
             nn.Conv2d(1, 8, kernel_size=(2, 5), stride=(1), padding=(1)),
-            # nn.BatchNorm2d(8),
             nn.ReLU(),
             nn.Conv2d(8, 16, kernel_size=(3), stride=(1), padding=(1)),
             nn.BatchNorm2d(16),
             nn.ReLU(),
             nn.Conv2d(16, 32, kernel_size=(3), stride=(1), padding=(0)),
-            # nn.BatchNorm2d(32),
             nn.ReLU(),
         )
-        # Flatten
-        self.flatten = nn.Flatten(start_dim=1)
+        
+        # Calculate the output dimension of the convolutional layers
+        # Create a dummy input to calculate the output shape
 
-        # Linear layers
+        dummy_input = torch.zeros(1, 1, 50, 50)
+        print(dummy_input.shape)
+        conv_output = self.q_z_conv(dummy_input)
+        self.conv_op_shape = conv_output.shape
+        self.q_z_output_dim = conv_output.shape[1] * conv_output.shape[2] * conv_output.shape[3]
+
+
+        # Now create the linear layers with the correct dimensions
+        self.flatten = nn.Flatten(start_dim=1)
+        
+        # Encoder linear layers (with correct dimensions)
         self.q_z_lin = nn.Sequential(
             nn.Linear(self.q_z_output_dim, self.q_z_mid_dim),
             nn.ReLU(),
-            # nn.BatchNorm1d(self.q_z_output_dim),
             nn.Linear(self.q_z_mid_dim, z_dim),
             nn.ReLU(),
         )
-
-        # Decoder
-
-        # Linear layers
+        
+        # Decoder linear layers (with correct dimensions)
         self.p_x_lin = nn.Sequential(
             nn.Linear(z_dim, self.q_z_mid_dim),
             nn.ReLU(),
-            # nn.BatchNorm1d(self.q_z_output_dim),
             nn.Linear(self.q_z_mid_dim, self.q_z_output_dim),
             nn.ReLU()
-            # nn.BatchNorm1d(42720)
         )
-        # Conv Layers
+        
+        # Decoder convolutional layers (unchanged)
         self.p_x_conv = nn.Sequential(
             nn.ConvTranspose2d(32, 16, kernel_size=(3), stride=(1), padding=(0)),
             nn.BatchNorm2d(16),
@@ -370,11 +376,10 @@ class Conv_AE(nn.Module):
         )
 
     def encode(self, x):
+        # print("----"*100)
+        # print(x.shape)
         # Conv
         out = self.q_z_conv(x)
-        self.conv_op_shape = out.shape
-        self.q_z_output_dim = out.shape[1] * out.shape[2] * out.shape[3]
-
         # Flatten
         out = self.flatten(out)
         # Dense
@@ -383,10 +388,14 @@ class Conv_AE(nn.Module):
 
     def decode(self, z):
         # Dense
+    
+        # print(z.shape)
         out = self.p_x_lin(z)
+        # print(out.shape)
+        # print(self.conv_op_shape)
         # Unflatten
         out = out.view(
-            self.conv_op_shape[0],
+            z.shape[0],
             self.conv_op_shape[1],
             self.conv_op_shape[2],
             self.conv_op_shape[3],
@@ -405,7 +414,6 @@ class Conv_AE(nn.Module):
 
     def set_final_layer_dims(self, conv_op_shape):
         self.conv_op_shape = conv_op_shape
-
 
 class FPGA_prototype_model(nn.Module):
     def __init__(self, n_features, z_dim, *args, **kwargs):
@@ -575,64 +583,58 @@ class Conv_AE_GDN(nn.Module):
     def __init__(self, n_features, z_dim, *args, **kwargs):
         super(Conv_AE_GDN, self).__init__(*args, **kwargs)
 
+        self.z_dim = z_dim
         self.q_z_mid_dim = 2000
-        self.q_z_output_dim = 128
-        self.conv_op_shape = None
-
-        # Encoder
-
-        # Conv Layers
+        self.device = helper.get_device()
+        # Encoder convolutional layers
         self.q_z_conv = nn.Sequential(
             nn.Conv2d(1, 8, kernel_size=(2, 5), stride=(1), padding=(1)),
-            # nn.BatchNorm2d(8),
             GDN(8),
             nn.Conv2d(8, 16, kernel_size=(3), stride=(1), padding=(1)),
             nn.BatchNorm2d(16),
             GDN(16),
             nn.Conv2d(16, 32, kernel_size=(3), stride=(1), padding=(0)),
-            # nn.BatchNorm2d(32),
             GDN(32),
-        )
+        ).to(self.device)
+        
+        # Calculate the output dimension of the convolutional layers
+        # Create a dummy input to determine the output shape
+        dummy_input = torch.zeros(1, 1, n_features, n_features).to(self.device)
+        conv_output = self.q_z_conv(dummy_input)
+        self.conv_op_shape = conv_output.shape
+        self.q_z_output_dim = conv_output.shape[1] * conv_output.shape[2] * conv_output.shape[3]
+        
         # Flatten
-        self.flatten = nn.Flatten(start_dim=1)
-
-        # Linear layers
+        self.flatten = nn.Flatten(start_dim=1).to(self.device)
+        
+        # Encoder linear layers (with correct dimensions)
         self.q_z_lin = nn.Sequential(
             nn.Linear(self.q_z_output_dim, self.q_z_mid_dim),
             nn.ReLU(),
-            # nn.BatchNorm1d(self.q_z_output_dim),
             nn.Linear(self.q_z_mid_dim, z_dim),
             nn.ReLU(),
-        )
-
-        # Decoder
-
-        # Linear layers
+        ).to(self.device)
+        
+        # Decoder linear layers (with correct dimensions)
         self.p_x_lin = nn.Sequential(
             nn.Linear(z_dim, self.q_z_mid_dim),
             nn.ReLU(),
-            # nn.BatchNorm1d(self.q_z_output_dim),
             nn.Linear(self.q_z_mid_dim, self.q_z_output_dim),
             nn.ReLU()
-            # nn.BatchNorm1d(42720)
-        )
-        # Conv Layers
+        ).to(self.device)
+        
+        # Decoder convolutional layers
         self.p_x_conv = nn.Sequential(
             nn.ConvTranspose2d(32, 16, kernel_size=(3), stride=(1), padding=(0)),
-            # nn.BatchNorm2d(16),
             GDN(16, inverse=True),
             nn.ConvTranspose2d(16, 8, kernel_size=(3), stride=(1), padding=(1)),
-            # nn.BatchNorm2d(8),
             GDN(8, inverse=True),
             nn.ConvTranspose2d(8, 1, kernel_size=(2, 5), stride=(1), padding=(1)),
-        )
+        ).to(self.device)
 
     def encode(self, x):
         # Conv
         out = self.q_z_conv(x)
-        self.conv_op_shape = out.shape
-        self.q_z_output_dim = out.shape[1] * out.shape[2] * out.shape[3]
-
         # Flatten
         out = self.flatten(out)
         # Dense
@@ -644,7 +646,8 @@ class Conv_AE_GDN(nn.Module):
         out = self.p_x_lin(z)
         # Unflatten
         out = out.view(
-            self.conv_op_shape[0],
+            z.shape[0], # for consistency with batch size
+            # self.conv_op_shape[0],
             self.conv_op_shape[1],
             self.conv_op_shape[2],
             self.conv_op_shape[3],
@@ -859,3 +862,216 @@ class TransformerAE(nn.Module):
         z = self.encoder(x)
         x = self.decoder(z)
         return x
+
+from collections import defaultdict
+
+class HCLT(nn.Module):
+    def __init__(self, num_vars, num_categories, clt_adj_list=None):
+        """
+        Initialize the HCLT model.
+
+        Args:
+            num_vars (int): Number of observed variables (D).
+            num_categories (int): Number of categories per variable (e.g., 256 for 8-bit pixels).
+            clt_adj_list (list of tuples, optional): Adjacency list representing the CLT structure.
+                If None, a default chain structure is used.
+        """
+        super(HCLT, self).__init__()
+        self.num_vars = num_vars  # D: number of observed variables
+        self.M = num_categories   # Number of categories for latent variables
+        self.num_categories = num_categories  # Categories for observed variables
+
+        # Define CLT structure (edges between variables)
+        if clt_adj_list is None:
+            # Default: linear chain X0 - X1 - ... - X_{D-1}
+            self.clt_adj_list = [(i, i + 1) for i in range(num_vars - 1)]
+        else:
+            self.clt_adj_list = clt_adj_list
+
+        # Build the HCLT PC structure
+        self.pc_units, self.root = self._build_hclt_pc()
+
+        # Parameters: conditional probabilities for each node
+        self.params = nn.ParameterDict()
+        for node_id, unit in self.pc_units.items():
+            if unit['type'] == 'input':
+                # P(X_i | Z_i = k), shape: [M, num_categories]
+                self.params[f'input_{node_id}'] = nn.Parameter(
+                    torch.randn(self.M, self.num_categories).softmax(dim=-1)
+                )
+            elif unit['type'] == 'sum':
+                # Weights for sum nodes, shape: [num_children]
+                self.params[f'sum_{node_id}'] = nn.Parameter(
+                    torch.randn(len(unit['children'])).softmax(dim=-1)
+                )
+
+    def _build_hclt_pc(self):
+        """
+        Build the HCLT PC structure from the CLT.
+
+        Returns:
+            pc_units (dict): Dictionary of PC units (input, sum, product).
+            root (int): ID of the root node.
+        """
+        pc_units = {}
+        node_counter = 0
+
+        # Step 1: Create latent variables Z_i and observed variables X_i
+        latent_to_input = defaultdict(list)
+        for i in range(self.num_vars):
+            # For each X_i, create M input units (one per latent category)
+            for k in range(self.M):
+                node_id = node_counter
+                pc_units[node_id] = {
+                    'type': 'input',
+                    'var': i,  # Observed variable index
+                    'latent_state': k,  # Latent category
+                    'scope': {i}
+                }
+                latent_to_input[i].append(node_id)
+                node_counter += 1
+
+        # Step 2: Build the tree structure bottom-up
+        # For simplicity, assume a binary tree based on CLT edges
+        scope_to_nodes = defaultdict(list)
+        for i in range(self.num_vars):
+            scope_to_nodes[frozenset([i])] = latent_to_input[i]
+
+        processed = set()
+        for u, v in self.clt_adj_list:
+            if u in processed and v in processed:
+                continue
+            scope_u = frozenset([u])
+            scope_v = frozenset([v])
+            combined_scope = scope_u | scope_v
+
+            # Create product nodes
+            prod_nodes = []
+            for k in range(self.M):
+                node_id = node_counter
+                pc_units[node_id] = {
+                    'type': 'product',
+                    'children': [scope_to_nodes[scope_u][k], scope_to_nodes[scope_v][k]],
+                    'scope': combined_scope
+                }
+                prod_nodes.append(node_id)
+                node_counter += 1
+
+            # Create sum node
+            sum_node_id = node_counter
+            pc_units[sum_node_id] = {
+                'type': 'sum',
+                'children': prod_nodes,
+                'scope': combined_scope
+            }
+            scope_to_nodes[combined_scope].append(sum_node_id)
+            node_counter += 1
+            processed.add(u)
+            processed.add(v)
+
+        # Root is the last sum node (full scope)
+        root_scope = frozenset(range(self.num_vars))
+        root = scope_to_nodes[root_scope][0]
+        return pc_units, root
+
+    def forward(self, x):
+        """
+        Compute the log-probability of input samples.
+
+        Args:
+            x (Tensor): Input tensor of shape [batch_size, num_vars], integer values.
+
+        Returns:
+            Tensor: Log-probabilities of shape [batch_size].
+        """
+        batch_size = x.shape[0]
+        node_probs = {}
+
+        # Bottom-up evaluation
+        for node_id in sorted(self.pc_units.keys()):
+            unit = self.pc_units[node_id]
+            if unit['type'] == 'input':
+                var_idx = unit['var']
+                probs = self.params[f'input_{node_id}']  # [M, num_categories]
+                x_var = x[:, var_idx].long()  # [batch_size]
+                node_probs[node_id] = probs[:, x_var].log()  # [M, batch_size]
+            elif unit['type'] == 'product':
+                child_probs = [node_probs[c] for c in unit['children']]  # List of [M, batch_size]
+                node_probs[node_id] = sum(child_probs)  # [M, batch_size]
+            elif unit['type'] == 'sum':
+                child_probs = torch.stack([node_probs[c] for c in unit['children']], dim=0)  # [num_children, M, batch_size]
+                weights = self.params[f'sum_{node_id}'].view(-1, 1, 1)  # [num_children, 1, 1]
+                weighted = (weights * child_probs.exp()).sum(dim=0).log()  # [M, batch_size]
+                node_probs[node_id] = weighted
+
+        root_probs = node_probs[self.root]  # [M, batch_size]
+        log_probs = root_probs.logsumexp(dim=0)  # [batch_size]
+        return log_probs
+
+    def _compute_marginals(self, x_partial, var_order):
+        """
+        Compute marginal probabilities for encoding/decoding.
+
+        Args:
+            x_partial (Tensor): Partially observed variables, shape [batch_size, len(var_order)].
+            var_order (list): Order of variables to compute marginals for.
+
+        Returns:
+            dict: Marginal probabilities for each variable given previous variables.
+        """
+        # Placeholder: Implement efficient marginal computation (Alg. 3 from paper)
+        # For simplicity, use forward pass with masking; real implementation needs vtree and caching
+        marginals = {}
+        batch_size = x_partial.shape[0]
+        x_full = torch.full((batch_size, self.num_vars), -1, dtype=torch.long, device=x_partial.device)
+        for i, var in enumerate(var_order):
+            x_full[:, var] = x_partial[:, i]
+            probs = self.forward(x_full)
+            marginals[var] = probs.exp()
+        return marginals
+
+    def encode(self, x):
+        """
+        Encode an input sample into a bitstream.
+
+        Args:
+            x (Tensor): Input tensor of shape [batch_size, num_vars], integer values.
+
+        Returns:
+            bitstream: Compressed bitstream (placeholder for rANS integration).
+        """
+        batch_size = x.shape[0]
+        var_order = list(range(self.num_vars))  # Simplified: use natural order
+        bitstream = []
+
+        for i in range(self.num_vars):
+            x_prev = x[:, :i] if i > 0 else torch.empty(batch_size, 0, dtype=torch.long, device=x.device)
+            marginals = self._compute_marginals(x_prev, var_order[:i])
+            # Compute conditional probabilities P(X_i | X_1, ..., X_{i-1})
+            # Placeholder: Integrate with rANS coder
+            bitstream.append(x[:, i])  # Dummy append; replace with actual encoding
+
+        return bitstream  # Replace with actual rANS bitstream
+
+    def decode(self, bitstream):
+        """
+        Decode a bitstream back to the original sample.
+
+        Args:
+            bitstream: Compressed bitstream (placeholder).
+
+        Returns:
+            Tensor: Reconstructed sample of shape [batch_size, num_vars].
+        """
+        batch_size = 1  # Adjust based on bitstream
+        var_order = list(range(self.num_vars))
+        x_recon = torch.zeros(batch_size, self.num_vars, dtype=torch.long)
+
+        for i, var in enumerate(var_order):
+            x_prev = x_recon[:, :i] if i > 0 else torch.empty(batch_size, 0, dtype=torch.long)
+            marginals = self._compute_marginals(x_prev, var_order[:i])
+            # Decode next variable using bitstream and marginals
+            # Placeholder: Integrate with rANS decoder
+            x_recon[:, i] = bitstream[i]  # Dummy; replace with actual decoding
+
+        return x_recon

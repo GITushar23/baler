@@ -1,7 +1,7 @@
 def set_config(c):
     c.input_path = "workspaces/CFD_workspace/data/CFD_animation.npz"
     c.compression_ratio = 100
-    # c.number_of_columns = 24
+    c.number_of_columns = 2500
     # c.latent_space_size = 15
     c.epochs = 2000
     c.early_stopping = False
@@ -9,7 +9,7 @@ def set_config(c):
     c.min_delta = 0
     c.lr_scheduler = True
     c.lr_scheduler_patience = 50
-    c.model_name = "CFD_dense_AE"
+    c.model_name = "AE_Dropout_BN"
     c.model_type = "dense"
     c.custom_norm = True
     c.l1 = True
@@ -64,3 +64,7 @@ def set_config(c):
 #     c.l1 = True
 #     c.activation_extraction = False
 #     c.deterministic_algorithm = False
+
+
+
+

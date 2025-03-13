@@ -106,6 +106,7 @@ def perform_training(output_path, config, verbose: bool):
         config.test_size,
         config.apply_normalization,
         config.convert_to_blocks if hasattr(config, "convert_to_blocks") else None,
+        config.is_nested,
         verbose,
     )
 
@@ -122,7 +123,9 @@ def perform_training(output_path, config, verbose: bool):
             config.number_of_columns = number_of_columns
             n_features = number_of_columns
         elif config.data_dimension == 2:
+            print("Data dimension is 2")
             if config.model_type == "dense":
+                print(train_set_norm.shape)
                 number_of_rows = train_set_norm.shape[1]
                 number_of_columns = train_set_norm.shape[2]
                 n_features = number_of_columns * number_of_rows
@@ -156,6 +159,7 @@ def perform_training(output_path, config, verbose: bool):
         print(f"Device used for training: {device}")
 
     model_object = helper.model_init(config.model_name)
+    # print(f"n_features: {n_features}    , z_dim: {config.latent_space_size} llllllllllllllllllll")
     model = model_object(n_features=n_features, z_dim=config.latent_space_size)
     model.to(device)
 
@@ -195,6 +199,7 @@ def perform_training(output_path, config, verbose: bool):
             os.path.join(output_path, "compressed_output", "decoder.pt"),
         )
     else:
+        os.makedirs(os.path.join(output_path, "compressed_output"), exist_ok=True)
         helper.model_saver(
             trained_model, os.path.join(output_path, "compressed_output", "model.pt")
         )
@@ -338,6 +343,41 @@ def perform_compression(output_path, config, verbose: bool):
         f_deltas.close()
 
 
+"""MYCODE"""
+def reshape_dataset(data):
+    """Reshape the dataset by padding all arrays to the global maximum length without normalization."""
+    # Step 1: Find the global maximum length
+    max_len = find_global_max_len(data)
+    print(f"Global maximum length found: {max_len}")
+    
+    # Step 2: Pad all arrays to max_len
+    padded_data = pad_arrays(data, max_len)
+    
+    # Step 3: Convert to a 3D NumPy array: (n_samples, n_features, max_len)
+    reshaped_data = np.stack([np.stack(sample) for sample in padded_data], axis=0)
+    
+    return reshaped_data
+def find_global_max_len(data):
+    """Find the maximum length of any array across all samples and features."""
+    max_len = 0
+    for sample in data:
+        for feature in sample:
+            max_len = max(max_len, len(feature))
+    return max_len
+
+def pad_arrays(data, max_len):
+    """Pad all arrays in the dataset to the maximum length with zeros."""
+    padded_data = []
+    for sample in data:
+        padded_sample = []
+        for feature in sample:
+            padded_feature = np.pad(feature, (0, max_len - len(feature)), 
+                                  'constant', constant_values=0)
+            padded_sample.append(padded_feature)
+        padded_data.append(padded_sample)
+    return padded_data
+
+"""ENDSHERE"""
 def perform_decompression(output_path, config, verbose: bool):
     """Main function calling the decompression functions, ran when --mode=decompress is selected.
        The main function being called here is: `helper.decompress`
@@ -353,7 +393,12 @@ def perform_decompression(output_path, config, verbose: bool):
 
     start = time.time()
     model_name = config.model_name
-    data_before = np.load(config.input_path)["data"]
+    if config.is_nested:
+        data = np.load(config.input_path, allow_pickle= True)["data"]
+        data_before = reshape_dataset(data)
+        print("Padding data to match the maximum length of the features in the dataset",f"Old shape: {data.shape} New shape: {data_before.shape}")
+    else:
+        data_before = np.load(config.input_path)["data"]
     if config.separate_model_saving:
         decompressed, names, normalization_features = helper.decompress(
             model_path=os.path.join(output_path, "compressed_output", "decoder.pt"),
