@@ -28,6 +28,7 @@ def set_config(c):
     c.separate_model_saving = False
     c.save_error_bounded_deltas = False
     c.convert_to_blocks = False
+    c.is_nested = False
 
 
 
